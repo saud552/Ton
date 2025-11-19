@@ -7,7 +7,8 @@ from enum import Enum
 from functools import lru_cache
 from typing import Dict, Type
 
-from pydantic import BaseSettings, Field
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Environment(str, Enum):
@@ -46,10 +47,11 @@ class AppSettings(BaseSettings):
         env="PRICING_PROVIDER_URL",
     )
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
 
     @property
     def star_price_ton(self) -> float:
@@ -71,8 +73,11 @@ class AppSettings(BaseSettings):
 class DevSettings(AppSettings):
     """Developer-friendly defaults."""
 
-    class Config(AppSettings.Config):
-        env_file = ".env.dev"
+    model_config = SettingsConfigDict(
+        env_file=".env.dev",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
 
 
 class ProdSettings(AppSettings):
@@ -80,8 +85,11 @@ class ProdSettings(AppSettings):
 
     log_level: str = Field(default="WARNING", env="LOG_LEVEL")
 
-    class Config(AppSettings.Config):
-        env_file = ".env"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
 
 
 _ENVIRONMENT_MAP: Dict[Environment, Type[AppSettings]] = {

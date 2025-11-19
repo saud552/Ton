@@ -1,11 +1,25 @@
-"""Application bootstrap entrypoint for the modular bot."""
+"""Application bootstrap entrypoint for the modular Aiogram bot."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import suppress
+
+from aiogram import Bot, Dispatcher
+from aiogram.enums import ParseMode
 
 from app import AppSettings, configure_logging, get_settings
-
+from app.context import AppContext, set_context
+from app.db import DatabaseManager
+from app.handlers import get_routers
+from app.services import (
+    BalanceMonitor,
+    HttpClient,
+    PricingService,
+    TonService,
+)
+from app.storage import DatabaseStorage
 
 logger = logging.getLogger("app.bootstrap")
 
@@ -22,5 +36,61 @@ def bootstrap() -> AppSettings:
     return settings
 
 
+async def run_bot() -> None:
+    """Configure dependencies and start Aiogram polling."""
+
+    settings = bootstrap()
+    bot = Bot(token=settings.bot_token, parse_mode=ParseMode.MARKDOWN)
+
+    db_manager = DatabaseManager(settings.database_file)
+    await db_manager.initialize()
+
+    ton_http_client = HttpClient(settings.http_timeout)
+    pricing_http_client = HttpClient(settings.http_timeout)
+
+    ton_gateway = TonService(settings, http_client=ton_http_client)
+    pricing_service = PricingService(settings, http_client=pricing_http_client)
+    balance_monitor = BalanceMonitor(ton_gateway, settings)
+
+    storage = DatabaseStorage(db_manager)
+    dispatcher = Dispatcher(storage=storage)
+
+    for router in get_routers():
+        dispatcher.include_router(router)
+
+    set_context(
+        AppContext(
+            settings=settings,
+            db_manager=db_manager,
+            ton_gateway=ton_gateway,
+            pricing_service=pricing_service,
+            balance_monitor=balance_monitor,
+        )
+    )
+
+    await pricing_service.start()
+    await balance_monitor.start()
+
+    try:
+        await dispatcher.start_polling(bot)
+    finally:
+        with suppress(Exception):
+            await storage.close()
+        with suppress(Exception):
+            await pricing_service.stop()
+        with suppress(Exception):
+            await balance_monitor.stop()
+        with suppress(Exception):
+            await ton_gateway.close()
+        with suppress(Exception):
+            await ton_http_client.close()
+        with suppress(Exception):
+            await pricing_http_client.close()
+
+
+def main() -> None:
+    asyncio.run(run_bot())
+
+
 if __name__ == "__main__":
-    bootstrap()
+    main()
