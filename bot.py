@@ -1,5 +1,5 @@
 import logging
-import sqlite3
+from typing import Optional
 from telebot import TeleBot, types
 from telebot.handler_backends import State, StatesGroup
 from telebot.storage import StateMemoryStorage
@@ -10,6 +10,7 @@ import json
 import config
 from database import db
 from ton_handler import ton_handler
+from app.db.models import UserStateStage
 
 # إعداد التسجيل
 logging.basicConfig(
@@ -24,6 +25,7 @@ bot = TeleBot(config.BOT_TOKEN, state_storage=StateMemoryStorage())
 # تعريف حالات المحادثة
 class UserStates:
     waiting_for_stars = "waiting_for_stars"
+    waiting_for_payment = "waiting_for_payment"
     waiting_for_wallet = "waiting_for_wallet"
     confirming_wallet = "confirming_wallet"
 
@@ -49,6 +51,77 @@ def get_main_menu_keyboard():
     keyboard.add(types.KeyboardButton("بدء عملية البيع 💫"))
     keyboard.add(types.KeyboardButton("سجل المعاملات 📊"))
     return keyboard
+
+
+DB_STAGE_TO_BOT_STATE = {
+    UserStateStage.WAITING_FOR_STARS: UserStates.waiting_for_stars,
+    UserStateStage.WAITING_FOR_PAYMENT: UserStates.waiting_for_payment,
+    UserStateStage.WAITING_FOR_WALLET: UserStates.waiting_for_wallet,
+    UserStateStage.CONFIRMING_WALLET: UserStates.confirming_wallet,
+}
+
+
+def _update_memory_state_from_persistent(user_id: int, user_state) -> None:
+    with bot.retrieve_data(user_id) as data:
+        if user_state.stars_count is not None:
+            data['stars_count'] = user_state.stars_count
+        if user_state.ton_amount is not None:
+            data['ton_amount'] = user_state.ton_amount
+        if user_state.payment_charge_id:
+            data['payment_charge_id'] = user_state.payment_charge_id
+        if user_state.wallet_address:
+            data['wallet_address'] = user_state.wallet_address
+
+
+def restore_user_state_if_needed(message) -> bool:
+    user_id = message.from_user.id
+    user_state = db.get_user_state(user_id)
+    if not user_state or user_state.stage == UserStateStage.IDLE:
+        return False
+
+    telebot_state = DB_STAGE_TO_BOT_STATE.get(user_state.stage)
+    if telebot_state:
+        bot.set_state(user_id, telebot_state)
+    _update_memory_state_from_persistent(user_id, user_state)
+
+    stars = user_state.stars_count or 0
+    ton_amount = user_state.ton_amount or (stars * config.STAR_PRICE_TON)
+
+    if user_state.stage == UserStateStage.WAITING_FOR_STARS:
+        resume_text = (
+            "⚠️ **متابعة العملية**\n\n"
+            "لديك عملية بيع غير مكتملة.\n"
+            "أرسل عدد النجوم الذي ترغب في بيعه لاستكمال العملية."
+        )
+        markup = get_cancel_keyboard()
+    elif user_state.stage == UserStateStage.WAITING_FOR_PAYMENT:
+        resume_text = (
+            "💳 **في انتظار الدفع**\n\n"
+            f"عدد النجوم: {stars}\n"
+            f"المبلغ المستحق: {ton_amount:.6f} TON\n\n"
+            "أكمل دفع الفاتورة التي استلمتها أو ألغ العملية لإعادة البدء."
+        )
+        markup = get_cancel_keyboard()
+    elif user_state.stage == UserStateStage.WAITING_FOR_WALLET:
+        resume_text = (
+            "💎 **دفع مكتمل**\n\n"
+            f"عدد النجوم: {stars}\n"
+            f"المبلغ المستحق: {ton_amount:.6f} TON\n\n"
+            "الرجاء إرسال عنوان محفظة TON الخاصة بك لإتمام التحويل."
+        )
+        markup = get_cancel_keyboard()
+    else:
+        resume_text = (
+            "✅ **تم استلام العنوان**\n\n"
+            f"عدد النجوم: {stars}\n"
+            f"المبلغ المستحق: {ton_amount:.6f} TON\n"
+            f"العنوان الحالي: {user_state.wallet_address or 'غير متوفر'}\n\n"
+            "اضغط على 'تأكيد العنوان ✅' لمتابعة التحويل أو قم بإلغائها."
+        )
+        markup = get_wallet_confirmation_keyboard()
+
+    bot.send_message(message.chat.id, resume_text, reply_markup=markup, parse_mode="Markdown")
+    return True
 
 # معالجة الأمر /start
 @bot.message_handler(commands=['start'])
@@ -92,6 +165,8 @@ def cmd_start(message):
         logger.error(f"Error sending message: {e}")
         # إعادة المحاولة بدون تنسيق
         bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
+    if restore_user_state_if_needed(message):
+        return
 
 # معالجة زر بدء عملية البيع
 @bot.message_handler(func=lambda message: message.text == "بدء عملية البيع 💫")
@@ -117,6 +192,7 @@ def start_selling(message):
                         reply_markup=get_cancel_keyboard())
         
         bot.set_state(message.from_user.id, UserStates.waiting_for_stars)
+        db.set_user_state(user_id, UserStateStage.WAITING_FOR_STARS)
         logger.info(f"User {user_id} started selling process")
         
     except Exception as e:
@@ -164,6 +240,13 @@ def process_stars_count(message):
             data['stars_count'] = stars_count
             data['ton_amount'] = ton_amount
         
+        db.set_user_state(
+            user_id,
+            UserStateStage.WAITING_FOR_STARS,
+            stars_count=stars_count,
+            ton_amount=ton_amount,
+        )
+        
         # إنشاء فاتورة الدفع للنجوم
         try:
             prices = [types.LabeledPrice(label=f"{stars_count} نجمة", amount=stars_count)]
@@ -183,6 +266,13 @@ def process_stars_count(message):
             bot.send_message(message.chat.id, 
                            "💎 **تم إنشاء فاتورة الدفع**\n\nاضغط على الزر أعلاه لدفع النجوم.", 
                            reply_markup=get_cancel_keyboard())
+            bot.set_state(user_id, UserStates.waiting_for_payment)
+            db.set_user_state(
+                user_id,
+                UserStateStage.WAITING_FOR_PAYMENT,
+                stars_count=stars_count,
+                ton_amount=ton_amount,
+            )
             logger.info(f"Invoice created for user {user_id}: {stars_count} stars")
             
         except Exception as e:
@@ -195,6 +285,20 @@ def process_stars_count(message):
         bot.send_message(message.chat.id, 
                        "❌ **إدخال غير صحيح**\n\nيرجى إدخال عدد صحيح فقط:\nمثال: 100", 
                        reply_markup=get_cancel_keyboard())
+
+
+@bot.message_handler(func=lambda message: bot.get_state(message.from_user.id) == UserStates.waiting_for_payment)
+def remind_pending_payment(message):
+    if message.text == "إلغاء العملية ❌":
+        cancel_operation(message)
+        return
+    bot.send_message(
+        message.chat.id,
+        "⌛️ **الفاتورة قيد الانتظار**\n\n"
+        "تم إنشاء فاتورة النجوم، يرجى إتمام الدفع عبر الزر الظاهر أعلى الدردشة.",
+        reply_markup=get_cancel_keyboard(),
+        parse_mode="Markdown",
+    )
 
 # معالجة PreCheckoutQuery
 @bot.pre_checkout_query_handler(func=lambda query: True)
@@ -226,6 +330,14 @@ def process_successful_payment(message):
                 data['stars_count'] = stars_count
                 data['ton_amount'] = ton_amount
                 data['payment_charge_id'] = payment_info.telegram_payment_charge_id
+        
+        db.set_user_state(
+            user_id,
+            UserStateStage.WAITING_FOR_WALLET,
+            stars_count=stars_count,
+            ton_amount=ton_amount,
+            payment_charge_id=payment_info.telegram_payment_charge_id,
+        )
             
             # نص نجاح الدفع
             success_text = f"""
@@ -291,6 +403,15 @@ def process_wallet_address(message):
     # حفظ العنوان في حالة المستخدم
     with bot.retrieve_data(user_id) as data:
         data['wallet_address'] = wallet_address
+
+    db.set_user_state(
+        user_id,
+        UserStateStage.CONFIRMING_WALLET,
+        stars_count=stars_count,
+        ton_amount=ton_amount,
+        wallet_address=wallet_address,
+        payment_charge_id=payment_charge_id,
+    )
     
     response_text = f"""
 📋 **تفاصيل طلبك النهائية:**
@@ -395,14 +516,18 @@ def show_transaction_history(message):
     history_text = "📊 **سجل المعاملات الأخيرة**\n\n"
     
     for i, tx in enumerate(transactions, 1):
-        tx_hash, stars_count, ton_amount, wallet_address, created, status = tx
-        short_hash = tx_hash[:8] + "..." + tx_hash[-8:] if len(tx_hash) > 16 else tx_hash
-        short_wallet = wallet_address[:8] + "..." + wallet_address[-8:] if len(wallet_address) > 16 else wallet_address
+        short_hash = tx.tx_hash[:8] + "..." + tx.tx_hash[-8:] if len(tx.tx_hash) > 16 else tx.tx_hash
+        short_wallet = (
+            tx.wallet_address[:8] + "..." + tx.wallet_address[-8:]
+            if len(tx.wallet_address) > 16
+            else tx.wallet_address
+        )
+        created_str = tx.created.strftime("%Y-%m-%d") if tx.created else "-"
         
-        history_text += f"{i}. ⭐ {stars_count} → 💰 {ton_amount:.6f} TON\n"
+        history_text += f"{i}. ⭐ {tx.stars_count} → 💰 {tx.ton_amount:.6f} TON\n"
         history_text += f"   📍 {short_wallet}\n"
         history_text += f"   🔗 {short_hash}\n"
-        history_text += f"   📅 {created[:10]}\n\n"
+        history_text += f"   📅 {created_str}\n\n"
     
     bot.send_message(message.chat.id, history_text, reply_markup=get_main_menu_keyboard())
 
