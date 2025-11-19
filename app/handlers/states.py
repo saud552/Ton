@@ -13,4 +13,13 @@ class SellingStates(StatesGroup):
     confirming_wallet = State(state="confirming_wallet")
 
 
-__all__ = ["SellingStates"]
+class InvoiceCreationStates(StatesGroup):
+    waiting_for_wallet_choice = State(state="invoice_wallet_choice")
+    waiting_for_wallet = State(state="invoice_wallet")
+    waiting_for_payer = State(state="invoice_payer")
+    waiting_for_reason = State(state="invoice_reason")
+    waiting_for_stars = State(state="invoice_stars")
+    awaiting_confirmation = State(state="invoice_confirmation")
+
+
+__all__ = ["SellingStates", "InvoiceCreationStates"]

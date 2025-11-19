@@ -2,7 +2,17 @@
 
 from aiogram import Router
 
-from . import admin, common, history, payments, selling, settings, start, wallet
+from . import (
+    admin,
+    common,
+    history,
+    invoice_creation,
+    payments,
+    selling,
+    settings,
+    start,
+    wallet,
+)
 
 
 def get_routers() -> list[Router]:
@@ -11,6 +21,7 @@ def get_routers() -> list[Router]:
     return [
         start.router,
         selling.router,
+        invoice_creation.router,
         payments.router,
         wallet.router,
         settings.router,

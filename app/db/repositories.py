@@ -35,6 +35,23 @@ class UserRepository(BaseRepository):
             commit=True,
         )
 
+    async def get_by_username(self, username: str) -> Optional[User]:
+        row = await self._execute(
+            "SELECT * FROM users WHERE username = ? COLLATE NOCASE",
+            (username,),
+            fetchone=True,
+        )
+        if not row:
+            return None
+        return User(
+            user_id=row["user_id"],
+            username=row["username"],
+            full_name=row["full_name"],
+            created=datetime.fromisoformat(row["created"])
+            if row.get("created")
+            else None,
+        )
+
 
 class UserStateRepository(BaseRepository):
     async def upsert_state(self, state: UserState) -> None:

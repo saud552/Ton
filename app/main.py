@@ -18,11 +18,12 @@ from app.context import (
     MaintenanceConfig,
     set_context,
 )
-from app.db import DatabaseManager
+from app.db import DatabaseManager, InvoiceRepository
 from app.handlers import get_routers
 from app.services import (
     BalanceMonitor,
     HttpClient,
+    InvoiceService,
     LocalizationService,
     MetricsCollector,
     PricingService,
@@ -65,6 +66,7 @@ async def run_bot() -> None:
     pricing_service = PricingService(settings, http_client=pricing_http_client)
     balance_monitor = BalanceMonitor(ton_gateway, settings)
     metrics = MetricsCollector()
+    invoice_service = InvoiceService(InvoiceRepository(db_manager))
 
     storage = DatabaseStorage(
         db_manager, default_language=settings.default_user_language
@@ -83,6 +85,7 @@ async def run_bot() -> None:
             balance_monitor=balance_monitor,
             metrics=metrics,
             localization=localization,
+            invoice_service=invoice_service,
             maintenance=MaintenanceConfig(
                 enabled=settings.maintenance_mode,
                 message=settings.maintenance_message,

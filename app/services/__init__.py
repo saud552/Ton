@@ -2,6 +2,7 @@
 
 from .balance_monitor import BalanceMonitor, build_balance_monitor
 from .http_client import HttpClient
+from .invoice_service import InvoiceService
 from .localization import LocalizationService
 from .metrics import MetricsCollector
 from .mock_ton_gateway import MockTonGateway
@@ -23,4 +24,5 @@ __all__ = [
     "MockTonGateway",
     "MetricsCollector",
     "LocalizationService",
+    "InvoiceService",
 ]

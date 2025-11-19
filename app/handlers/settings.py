@@ -63,12 +63,6 @@ async def prompt_wallet_update(message: Message, state: FSMContext) -> None:
         reply_markup=cancel_keyboard(t),
     )
 
-@router.message(LocalizedButton("create_invoice"))
-async def notify_invoice_creation(message: Message) -> None:
-    _, t = await resolve_language_tooling(message.from_user.id)
-    await message.answer(t("messages.feature_in_progress"))
-
-
 @router.message(LocalizedButton("pay_invoice"))
 async def notify_invoice_payment(message: Message) -> None:
     _, t = await resolve_language_tooling(message.from_user.id)

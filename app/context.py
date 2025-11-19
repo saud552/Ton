@@ -6,9 +6,10 @@ from dataclasses import dataclass
 from typing import Optional
 
 from app.config import AppSettings
-from app.db import DatabaseManager
+from app.db import DatabaseManager, InvoiceRepository
 from app.services import (
     BalanceMonitor,
+    InvoiceService,
     LocalizationService,
     MetricsCollector,
     PricingService,
@@ -43,6 +44,7 @@ class AppContext:
     balance_monitor: BalanceMonitor
     metrics: MetricsCollector
     localization: LocalizationService
+    invoice_service: InvoiceService
     maintenance: MaintenanceConfig
     forced_subscription: ForcedSubscriptionConfig
     broadcast: BroadcastConfig
