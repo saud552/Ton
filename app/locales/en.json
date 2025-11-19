@@ -1,0 +1,49 @@
+{
+  "buttons": {
+    "sell_stars": "Sell Stars",
+    "create_invoice": "Create Invoice",
+    "pay_invoice": "Pay Invoice",
+    "change_wallet": "Update Wallet",
+    "change_language": "Change Language",
+    "cancel": "Cancel ❌",
+    "confirm_address": "Confirm Address ✅",
+    "use_my_wallet": "My Wallet",
+    "use_new_wallet": "New Wallet",
+    "back": "Back",
+    "check_subscription": "Check ✅"
+  },
+  "messages": {
+    "maintenance": "{message}",
+    "forced_subscription": "📢 Please join the channels below before using the bot:",
+    "subscription_confirm": "After joining, press the Check button.",
+    "start_welcome": "Hello {name}!\n\n💰 Star price = {price_usd}$ (≈ {price_ton} TON)",
+    "not_subscribed": "❌ Subscription not verified yet.",
+    "balance_check_failed": "❌ Could not verify bot balance, please try again later.",
+    "bot_balance_low": "⚠️ Current bot balance: {balance} TON. It may not cover large orders.",
+    "sell_wallet_choice": "Choose the wallet address to receive the payment:",
+    "sell_enter_wallet": "✏️ Send the new wallet address (starts with EQ or UQ)",
+    "sell_wallet_missing": "⚠️ No saved wallet found. Please pick 'New Wallet'.",
+    "sell_wallet_saved": "✅ Your primary wallet will be used.",
+    "language_prompt": "🌐 Select your preferred language.",
+    "start_buttons_hint": "Use the buttons below.",
+    "subscription_ok": "✅ Subscription verified, thank you!",
+    "wallet_invalid": "❌ Invalid wallet address, please try again.",
+    "wallet_saved": "✅ Primary wallet updated.",
+    "language_updated": "✅ Language changed to {language}.",
+    "sell_intro": "📤 Send the number of stars you want to sell (integer).",
+    "operation_cancelled": "❌ Operation cancelled.",
+    "active_process_warning": "⚠️ You already have an active process.",
+    "invalid_star_input": "❌ Invalid input, please send a valid number.",
+    "stars_out_of_range": "❌ The number of stars is outside the allowed range.",
+    "insufficient_liquidity": "❌ Not enough liquidity to finish this operation now.",
+    "invoice_created": "💎 Invoice created, use the payment button above.",
+    "payment_received": "🎉 Received {stars} stars successfully.\n💎 Amount due: {ton} TON\n🆔 Charge ID: {charge}",
+    "history_empty": "📊 No previous transactions found.",
+    "unknown_command": "🔍 Message not recognized, please use the menu buttons.",
+    "feature_in_progress": "🚧 This feature will be enabled in an upcoming update."
+  },
+  "languages": {
+    "ar": "العربية",
+    "en": "English"
+  }
+}

@@ -2,26 +2,28 @@
 
 from __future__ import annotations
 
-from aiogram import F, Router
+from aiogram import Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import LabeledPrice, Message
 
 from app.context import get_context
-from app.keyboards.common import Buttons, cancel_keyboard
+from app.filters import LocalizedButton
+from app.keyboards import cancel_keyboard
 from .states import SellingStates
-from .utils import cancel_current_operation, resume_flow_if_needed
+from .utils import cancel_current_operation, resolve_language_tooling, resume_flow_if_needed
 
 router = Router(name="selling")
 
 
-@router.message(F.text == Buttons.START_SELLING)
+@router.message(LocalizedButton("sell_stars"))
 async def start_selling(message: Message, state: FSMContext) -> None:
     ctx = get_context()
+    _, t = await resolve_language_tooling(message.from_user.id)
     current_state = await state.get_state()
     if current_state and current_state != SellingStates.waiting_for_stars.state:
         await message.answer(
-            "⚠️ لديك عملية قائمة بالفعل.",
-            reply_markup=cancel_keyboard(),
+            t("messages.active_process_warning"),
+            reply_markup=cancel_keyboard(t),
             parse_mode="Markdown",
         )
         await resume_flow_if_needed(message, state)
@@ -30,41 +32,42 @@ async def start_selling(message: Message, state: FSMContext) -> None:
     success, balance = await ctx.ton_gateway.get_balance()
     if not success:
         await message.answer(
-            "❌ **عذراً**\n\nلا يمكن بدء عملية جديدة بسبب مشكلة في التحقق من الرصيد.",
-            reply_markup=cancel_keyboard(),
+            t("messages.balance_check_failed"),
+            reply_markup=cancel_keyboard(t),
             parse_mode="Markdown",
         )
         return
 
     if balance < 1.0:
         await message.answer(
-            f"⚠️ **تنبيه**\n\nرصيد البوت الحالي: {balance:.6f} TON\nقد لا يكون كافياً لعمليات البيع الكبيرة.",
-            reply_markup=cancel_keyboard(),
+            t("messages.bot_balance_low", balance=f"{balance:.6f}"),
+            reply_markup=cancel_keyboard(t),
             parse_mode="Markdown",
         )
 
     await state.set_state(SellingStates.waiting_for_stars)
     await state.set_data({})
     await message.answer(
-        "📤 **حسناً!**\n\nأرسل الآن **عدد النجوم** التي تريد بيعها:\n- يجب أن يكون العدد رقماً صحيحاً\n- مثال: 100",
-        reply_markup=cancel_keyboard(),
+        t("messages.sell_intro"),
+        reply_markup=cancel_keyboard(t),
         parse_mode="Markdown",
     )
 
 
 @router.message(SellingStates.waiting_for_stars)
 async def process_stars_count(message: Message, state: FSMContext) -> None:
-    if message.text == Buttons.CANCEL_OPERATION:
+    ctx = get_context()
+    _, t = await resolve_language_tooling(message.from_user.id)
+    if message.text == t("buttons.cancel"):
         await cancel_current_operation(message, state)
         return
 
-    ctx = get_context()
     try:
         stars_count = int(message.text)
     except ValueError:
         await message.answer(
-            "❌ **إدخال غير صحيح**\n\nيرجى إدخال رقم صحيح فقط، مثال: 100",
-            reply_markup=cancel_keyboard(),
+            t("messages.invalid_star_input"),
+            reply_markup=cancel_keyboard(t),
             parse_mode="Markdown",
         )
         await ctx.metrics.increment("invalid_star_input")
@@ -72,8 +75,8 @@ async def process_stars_count(message: Message, state: FSMContext) -> None:
 
     if stars_count <= 0:
         await message.answer(
-            "❌ **العدد يجب أن يكون أكبر من الصفر**",
-            reply_markup=cancel_keyboard(),
+            t("messages.stars_out_of_range"),
+            reply_markup=cancel_keyboard(t),
             parse_mode="Markdown",
         )
         await ctx.metrics.increment("stars_out_of_range")
@@ -81,8 +84,8 @@ async def process_stars_count(message: Message, state: FSMContext) -> None:
 
     if stars_count > 10000:
         await message.answer(
-            "❌ **العدد كبير جداً**\nيرجى إدخال عدد أقل من 10000 نجمة",
-            reply_markup=cancel_keyboard(),
+            t("messages.stars_out_of_range"),
+            reply_markup=cancel_keyboard(t),
             parse_mode="Markdown",
         )
         await ctx.metrics.increment("stars_out_of_range")
@@ -94,8 +97,8 @@ async def process_stars_count(message: Message, state: FSMContext) -> None:
     success, balance = await ctx.ton_gateway.get_balance()
     if not success or balance < ton_amount:
         await message.answer(
-            "❌ **رصيد غير كافٍ لإتمام العملية حالياً**",
-            reply_markup=cancel_keyboard(),
+            t("messages.insufficient_liquidity"),
+            reply_markup=cancel_keyboard(t),
             parse_mode="Markdown",
         )
         await ctx.metrics.increment("insufficient_liquidity")
@@ -107,11 +110,11 @@ async def process_stars_count(message: Message, state: FSMContext) -> None:
     )
 
     payload = f"stars_payment:{message.from_user.id}:{stars_count}"
-    prices_list = [LabeledPrice(label=f"{stars_count} نجمة", amount=stars_count)]
+    prices_list = [LabeledPrice(label=f"{stars_count}⭐", amount=stars_count)]
 
     await message.answer_invoice(
-        title=f"بيع {stars_count} نجمة",
-        description=f"بيع {stars_count} نجمة مقابل {ton_amount:.6f} TON",
+        title=t("buttons.sell_stars"),
+        description=f"{stars_count}⭐ = {ton_amount:.6f} TON",
         currency="XTR",
         prices=prices_list,
         provider_token=ctx.settings.payment_provider_token or "",
@@ -121,8 +124,8 @@ async def process_stars_count(message: Message, state: FSMContext) -> None:
 
     await state.set_state(SellingStates.waiting_for_payment)
     await message.answer(
-        "💎 **تم إنشاء فاتورة الدفع**\n\nاضغط على الزر أعلاه لدفع النجوم.",
-        reply_markup=cancel_keyboard(),
+        t("messages.invoice_created"),
+        reply_markup=cancel_keyboard(t),
         parse_mode="Markdown",
     )
     await ctx.metrics.increment("invoices_created")

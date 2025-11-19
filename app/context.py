@@ -7,7 +7,13 @@ from typing import Optional
 
 from app.config import AppSettings
 from app.db import DatabaseManager
-from app.services import BalanceMonitor, MetricsCollector, PricingService, TonGateway
+from app.services import (
+    BalanceMonitor,
+    LocalizationService,
+    MetricsCollector,
+    PricingService,
+    TonGateway,
+)
 
 
 @dataclass(slots=True)
@@ -36,6 +42,7 @@ class AppContext:
     pricing_service: PricingService
     balance_monitor: BalanceMonitor
     metrics: MetricsCollector
+    localization: LocalizationService
     maintenance: MaintenanceConfig
     forced_subscription: ForcedSubscriptionConfig
     broadcast: BroadcastConfig

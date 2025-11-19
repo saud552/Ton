@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from aiogram import Router
-from aiogram import F
+from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, PreCheckoutQuery
 
 from app.context import get_context
-from app.keyboards.common import cancel_keyboard
+from app.db import UserProfileRepository
+from app.keyboards import cancel_keyboard, wallet_choice_keyboard
 from .states import SellingStates
+from .utils import resolve_language_tooling
 
 router = Router(name="payments")
 
@@ -21,6 +22,8 @@ async def process_pre_checkout(pre_checkout_query: PreCheckoutQuery) -> None:
 
 @router.message(F.successful_payment)
 async def process_successful_payment(message: Message, state: FSMContext) -> None:
+    ctx = get_context()
+    _, t = await resolve_language_tooling(message.from_user.id)
     payment_info = message.successful_payment
     payload = payment_info.invoice_payload or ""
     parts = payload.split(":")
@@ -32,21 +35,33 @@ async def process_successful_payment(message: Message, state: FSMContext) -> Non
 
     if stars_count is None or ton_amount is None:
         await message.answer(
-            "⚠️ حدث خلل في استرجاع بيانات الطلب. يرجى التواصل مع الدعم.",
-            reply_markup=cancel_keyboard(),
+            t("messages.balance_check_failed"),
+            reply_markup=cancel_keyboard(t),
         )
         return
 
-    await state.set_state(SellingStates.waiting_for_wallet)
+    profile_repo = UserProfileRepository(ctx.db_manager)
+    profile = await profile_repo.get_profile(message.from_user.id)
+    has_primary = bool(profile and profile.primary_wallet_address)
+
+    await state.set_state(SellingStates.waiting_for_wallet_choice)
     await state.update_data(payment_charge_id=payment_info.telegram_payment_charge_id)
 
-    success_text = f"""
-🎉 **تم استلام الدفع بنجاح!**
+    success_text = t(
+        "messages.payment_received",
+        stars=stars_count,
+        ton=f"{ton_amount:.6f}",
+        charge=payment_info.telegram_payment_charge_id,
+    )
+    await message.answer(success_text, parse_mode="Markdown")
 
-⭐ **عدد النجوم المستلمة:** {stars_count}  
-💎 **المبلغ المستحق:** {ton_amount:.6f} TON  
-🆔 **معرّف الدفع:** {payment_info.telegram_payment_charge_id}
-
-الآن أرسل عنوان محفظتك على TON (يبدأ بـ EQ أو UQ) لإتمام التحويل.
-"""
-    await message.answer(success_text, reply_markup=cancel_keyboard(), parse_mode="Markdown")
+    prompt_key = (
+        "messages.sell_wallet_choice"
+        if has_primary
+        else "messages.sell_wallet_missing"
+    )
+    await message.answer(
+        t(prompt_key),
+        reply_markup=wallet_choice_keyboard(t, has_primary=has_primary),
+        parse_mode="Markdown",
+    )

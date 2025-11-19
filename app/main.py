@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import suppress
+from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
@@ -22,6 +23,7 @@ from app.handlers import get_routers
 from app.services import (
     BalanceMonitor,
     HttpClient,
+    LocalizationService,
     MetricsCollector,
     PricingService,
     TonService,
@@ -55,6 +57,10 @@ async def run_bot() -> None:
     ton_http_client = HttpClient(settings.http_timeout)
     pricing_http_client = HttpClient(settings.http_timeout)
 
+    localization = LocalizationService(
+        Path(__file__).resolve().parent / "locales",
+        default_language=settings.default_user_language,
+    )
     ton_gateway = TonService(settings, http_client=ton_http_client)
     pricing_service = PricingService(settings, http_client=pricing_http_client)
     balance_monitor = BalanceMonitor(ton_gateway, settings)
@@ -76,6 +82,7 @@ async def run_bot() -> None:
             pricing_service=pricing_service,
             balance_monitor=balance_monitor,
             metrics=metrics,
+            localization=localization,
             maintenance=MaintenanceConfig(
                 enabled=settings.maintenance_mode,
                 message=settings.maintenance_message,

@@ -2,26 +2,29 @@
 
 from __future__ import annotations
 
-from aiogram import F, Router
+from aiogram import Router
+from aiogram.filters import Command
 from aiogram.types import Message
 
 from app.context import get_context
 from app.db import CompletedTransactionRepository
-from app.keyboards.common import Buttons, main_menu_keyboard
+from app.keyboards import main_menu_keyboard
+from .utils import resolve_language_tooling
 
 router = Router(name="history")
 
 
-@router.message(F.text == Buttons.TRANSACTION_HISTORY)
+@router.message(Command("history"))
 async def show_history(message: Message) -> None:
     ctx = get_context()
+    _, t = await resolve_language_tooling(message.from_user.id)
     tx_repo = CompletedTransactionRepository(ctx.db_manager)
     transactions = await tx_repo.get_recent_for_user(message.from_user.id, limit=5)
 
     if not transactions:
         await message.answer(
-            "📊 **سجل المعاملات**\n\nلا توجد معاملات سابقة.",
-            reply_markup=main_menu_keyboard(),
+            t("messages.history_empty"),
+            reply_markup=main_menu_keyboard(t),
             parse_mode="Markdown",
         )
         return
@@ -42,4 +45,6 @@ async def show_history(message: Message) -> None:
             f"   📅 {created}\n\n"
         )
 
-    await message.answer(history_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
+    await message.answer(
+        history_text, reply_markup=main_menu_keyboard(t), parse_mode="Markdown"
+    )
