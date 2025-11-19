@@ -37,6 +37,14 @@ class AppSettings(BaseSettings):
     log_file: str = Field(default="logs/bot.log", env="LOG_FILE")
     log_max_bytes: int = Field(default=1_000_000, env="LOG_MAX_BYTES")
     log_backup_count: int = Field(default=5, env="LOG_BACKUP_COUNT")
+    http_timeout: float = Field(default=10.0, env="HTTP_TIMEOUT")
+    ton_max_retries: int = Field(default=3, env="TON_MAX_RETRIES")
+    pricing_refresh_interval: int = Field(default=300, env="PRICING_REFRESH_INTERVAL")
+    balance_refresh_interval: int = Field(default=60, env="BALANCE_REFRESH_INTERVAL")
+    pricing_provider_url: str = Field(
+        default="https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=usd",
+        env="PRICING_PROVIDER_URL",
+    )
 
     class Config:
         env_file = ".env"
