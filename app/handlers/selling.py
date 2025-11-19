@@ -67,6 +67,7 @@ async def process_stars_count(message: Message, state: FSMContext) -> None:
             reply_markup=cancel_keyboard(),
             parse_mode="Markdown",
         )
+        await ctx.metrics.increment("invalid_star_input")
         return
 
     if stars_count <= 0:
@@ -75,6 +76,7 @@ async def process_stars_count(message: Message, state: FSMContext) -> None:
             reply_markup=cancel_keyboard(),
             parse_mode="Markdown",
         )
+        await ctx.metrics.increment("stars_out_of_range")
         return
 
     if stars_count > 10000:
@@ -83,6 +85,7 @@ async def process_stars_count(message: Message, state: FSMContext) -> None:
             reply_markup=cancel_keyboard(),
             parse_mode="Markdown",
         )
+        await ctx.metrics.increment("stars_out_of_range")
         return
 
     prices = await ctx.pricing_service.get_prices()
@@ -95,6 +98,7 @@ async def process_stars_count(message: Message, state: FSMContext) -> None:
             reply_markup=cancel_keyboard(),
             parse_mode="Markdown",
         )
+        await ctx.metrics.increment("insufficient_liquidity")
         return
 
     await state.update_data(
@@ -121,3 +125,4 @@ async def process_stars_count(message: Message, state: FSMContext) -> None:
         reply_markup=cancel_keyboard(),
         parse_mode="Markdown",
     )
+    await ctx.metrics.increment("invoices_created")

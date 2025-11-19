@@ -7,7 +7,7 @@ from typing import Optional
 
 from app.config import AppSettings
 from app.db import DatabaseManager
-from app.services import BalanceMonitor, PricingService, TonGateway
+from app.services import BalanceMonitor, MetricsCollector, PricingService, TonGateway
 
 
 @dataclass(slots=True)
@@ -17,6 +17,7 @@ class AppContext:
     ton_gateway: TonGateway
     pricing_service: PricingService
     balance_monitor: BalanceMonitor
+    metrics: MetricsCollector
 
 
 _context: Optional[AppContext] = None

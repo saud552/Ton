@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from app.config import AppSettings, get_settings
@@ -29,6 +30,8 @@ class PricingService:
         self._stop = asyncio.Event()
         self._lock = asyncio.Lock()
         self._logger = logging.getLogger(self.__class__.__name__)
+        self._last_refresh: Optional[datetime] = None
+        self._last_error: Optional[str] = None
 
     async def start(self) -> None:
         if self._task and not self._task.done():
@@ -66,9 +69,12 @@ class PricingService:
                             "star_ton": star_ton,
                         }
                     )
+                    self._last_refresh = datetime.now(timezone.utc)
+                    self._last_error = None
                 self._logger.info("Pricing refreshed: TON %.4f USD", ton_usd)
         except Exception as exc:  # pylint: disable=broad-except
             self._logger.warning("Failed to refresh pricing: %s", exc)
+            self._last_error = str(exc)
         return await self.get_prices()
 
     async def get_prices(self) -> Dict[str, float]:
@@ -82,6 +88,16 @@ class PricingService:
                 await asyncio.wait_for(self._stop.wait(), timeout=self._interval)
             except asyncio.TimeoutError:
                 continue
+
+    async def get_status(self) -> Dict[str, Optional[str]]:
+        async with self._lock:
+            return {
+                "running": str(bool(self._task and not self._task.done())),
+                "last_refresh": self._last_refresh.isoformat() if self._last_refresh else None,
+                "last_error": self._last_error,
+                "ton_usd": f"{self._prices['ton_usd']:.4f}",
+                "star_ton": f"{self._prices['star_ton']:.6f}",
+            }
 
 
 def build_pricing_service(http_client: Optional[HttpClient] = None) -> PricingService:

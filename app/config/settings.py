@@ -7,7 +7,7 @@ from enum import Enum
 from functools import lru_cache
 from typing import Dict, Type
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,6 +46,7 @@ class AppSettings(BaseSettings):
         default="https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=usd",
         env="PRICING_PROVIDER_URL",
     )
+    admin_user_ids: list[int] = Field(default_factory=list, env="ADMIN_USER_IDS")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -68,6 +69,13 @@ class AppSettings(BaseSettings):
             if self.run_in_mainnet
             else "https://testnet.toncenter.com/api/v2"
         )
+
+    @field_validator("admin_user_ids", mode="before")
+    @classmethod
+    def parse_admin_ids(cls, value):
+        if isinstance(value, str):
+            return [int(part.strip()) for part in value.split(",") if part.strip()]
+        return value
 
 
 class DevSettings(AppSettings):

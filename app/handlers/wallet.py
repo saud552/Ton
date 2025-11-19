@@ -95,6 +95,7 @@ async def confirm_wallet(message: Message, state: FSMContext) -> None:
 يمكنك المتابعة هنا: {explorer_base}/{tx_hash}
 """
         await message.answer(success_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
+        await ctx.metrics.increment("ton_transfer_success")
     else:
         with suppress(Exception):
             await message.bot.delete_message(chat_id=processing.chat.id, message_id=processing.message_id)
@@ -107,6 +108,7 @@ async def confirm_wallet(message: Message, state: FSMContext) -> None:
 تم تسجيل طلبك وسنقوم بالمعالجة اليدوية. يرجى التواصل مع الدعم وذكر رقم المستخدم: {message.from_user.id}
 """
         await message.answer(error_text, reply_markup=cancel_keyboard(), parse_mode="Markdown")
+        await ctx.metrics.increment("ton_transfer_failed")
 
 
 @router.message(SellingStates.confirming_wallet)
@@ -126,6 +128,7 @@ async def _save_wallet_address(message: Message, state: FSMContext) -> None:
             reply_markup=cancel_keyboard(),
             parse_mode="Markdown",
         )
+        await ctx.metrics.increment("invalid_wallet_address")
         return
 
     ctx = get_context()
@@ -136,6 +139,7 @@ async def _save_wallet_address(message: Message, state: FSMContext) -> None:
             reply_markup=cancel_keyboard(),
             parse_mode="Markdown",
         )
+        await ctx.metrics.increment("invalid_wallet_address")
         return
 
     data = await state.get_data()

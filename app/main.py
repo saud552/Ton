@@ -16,6 +16,7 @@ from app.handlers import get_routers
 from app.services import (
     BalanceMonitor,
     HttpClient,
+    MetricsCollector,
     PricingService,
     TonService,
 )
@@ -51,6 +52,7 @@ async def run_bot() -> None:
     ton_gateway = TonService(settings, http_client=ton_http_client)
     pricing_service = PricingService(settings, http_client=pricing_http_client)
     balance_monitor = BalanceMonitor(ton_gateway, settings)
+    metrics = MetricsCollector()
 
     storage = DatabaseStorage(db_manager)
     dispatcher = Dispatcher(storage=storage)
@@ -65,6 +67,7 @@ async def run_bot() -> None:
             ton_gateway=ton_gateway,
             pricing_service=pricing_service,
             balance_monitor=balance_monitor,
+            metrics=metrics,
         )
     )
 
