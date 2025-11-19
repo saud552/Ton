@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from .base import BaseRepository
 from .models import (
     ActiveOrder,
     CompletedTransaction,
+    Invoice,
+    InvoicePayment,
+    InvoiceStatus,
     User,
+    UserProfile,
     UserState,
     UserStateStage,
 )
@@ -201,3 +205,186 @@ class CompletedTransactionRepository(BaseRepository):
                 )
             )
         return transactions
+
+
+class UserProfileRepository(BaseRepository):
+    async def get_profile(self, user_id: int) -> Optional[UserProfile]:
+        row = await self._execute(
+            "SELECT * FROM user_profiles WHERE user_id = ?",
+            (user_id,),
+            fetchone=True,
+        )
+        if not row:
+            return None
+        return UserProfile(
+            user_id=row["user_id"],
+            primary_wallet_address=row["primary_wallet_address"],
+            language=row["language"],
+            created_at=datetime.fromisoformat(row["created_at"])
+            if row["created_at"]
+            else None,
+            updated_at=datetime.fromisoformat(row["updated_at"])
+            if row["updated_at"]
+            else None,
+        )
+
+    async def ensure_profile(self, user_id: int, default_language: str) -> None:
+        await self._execute(
+            """
+            INSERT OR IGNORE INTO user_profiles (user_id, language)
+            VALUES (?, ?)
+            """,
+            (user_id, default_language),
+            commit=True,
+        )
+
+    async def upsert_profile(self, profile: UserProfile) -> None:
+        await self._execute(
+            """
+            INSERT INTO user_profiles (user_id, primary_wallet_address, language)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                primary_wallet_address=excluded.primary_wallet_address,
+                language=excluded.language,
+                updated_at=CURRENT_TIMESTAMP
+            """,
+            (profile.user_id, profile.primary_wallet_address, profile.language),
+            commit=True,
+        )
+
+    async def upsert_partial(
+        self,
+        user_id: int,
+        *,
+        primary_wallet_address: Optional[str] = None,
+        language: Optional[str] = None,
+    ) -> None:
+        await self._execute(
+            """
+            INSERT INTO user_profiles (user_id, primary_wallet_address, language)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                primary_wallet_address = CASE
+                    WHEN excluded.primary_wallet_address IS NOT NULL THEN excluded.primary_wallet_address
+                    ELSE user_profiles.primary_wallet_address
+                END,
+                language = CASE
+                    WHEN excluded.language IS NOT NULL THEN excluded.language
+                    ELSE user_profiles.language
+                END,
+                updated_at=CURRENT_TIMESTAMP
+            """,
+            (user_id, primary_wallet_address, language),
+            commit=True,
+        )
+
+
+class InvoiceRepository(BaseRepository):
+    async def create_invoice(self, invoice: Invoice) -> Invoice:
+        cursor = await self._execute(
+            """
+            INSERT INTO invoices (
+                code, creator_id, payer_user_id, wallet_address, reason,
+                stars_count, usd_value, ton_value, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                invoice.code,
+                invoice.creator_id,
+                invoice.payer_user_id,
+                invoice.wallet_address,
+                invoice.reason,
+                invoice.stars_count,
+                invoice.usd_value,
+                invoice.ton_value,
+                invoice.status.value,
+            ),
+            commit=True,
+        )
+        now = datetime.now(timezone.utc)
+        return Invoice(
+            id=cursor.lastrowid,
+            code=invoice.code,
+            creator_id=invoice.creator_id,
+            payer_user_id=invoice.payer_user_id,
+            wallet_address=invoice.wallet_address,
+            reason=invoice.reason,
+            stars_count=invoice.stars_count,
+            usd_value=invoice.usd_value,
+            ton_value=invoice.ton_value,
+            status=invoice.status,
+            created_at=now,
+            updated_at=now,
+        )
+
+    async def get_by_code(self, code: str) -> Optional[Invoice]:
+        row = await self._execute(
+            "SELECT * FROM invoices WHERE code = ?",
+            (code,),
+            fetchone=True,
+        )
+        if not row:
+            return None
+        return self._row_to_invoice(row)
+
+    async def update_status(self, invoice_id: int, status: InvoiceStatus) -> None:
+        await self._execute(
+            """
+            UPDATE invoices
+            SET status = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (status.value, invoice_id),
+            commit=True,
+        )
+
+    def _row_to_invoice(self, row) -> Invoice:
+        return Invoice(
+            id=row["id"],
+            code=row["code"],
+            creator_id=row["creator_id"],
+            payer_user_id=row["payer_user_id"],
+            wallet_address=row["wallet_address"],
+            reason=row["reason"],
+            stars_count=row["stars_count"],
+            usd_value=row["usd_value"],
+            ton_value=row["ton_value"],
+            status=InvoiceStatus(row["status"]),
+            created_at=datetime.fromisoformat(row["created_at"])
+            if row["created_at"]
+            else None,
+            updated_at=datetime.fromisoformat(row["updated_at"])
+            if row["updated_at"]
+            else None,
+        )
+
+
+class InvoicePaymentRepository(BaseRepository):
+    async def record_payment(self, payment: InvoicePayment) -> InvoicePayment:
+        cursor = await self._execute(
+            """
+            INSERT INTO invoice_payments (
+                invoice_id, payer_id, stars_paid, ton_value,
+                payment_charge_id, tx_hash
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                payment.invoice_id,
+                payment.payer_id,
+                payment.stars_paid,
+                payment.ton_value,
+                payment.payment_charge_id,
+                payment.tx_hash,
+            ),
+            commit=True,
+        )
+        return InvoicePayment(
+            id=cursor.lastrowid,
+            invoice_id=payment.invoice_id,
+            payer_id=payment.payer_id,
+            stars_paid=payment.stars_paid,
+            ton_value=payment.ton_value,
+            payment_charge_id=payment.payment_charge_id,
+            tx_hash=payment.tx_hash,
+            paid_at=datetime.now(timezone.utc),
+        )

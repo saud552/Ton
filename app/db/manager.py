@@ -59,8 +59,51 @@ CREATE TABLE IF NOT EXISTS user_states (
     FOREIGN KEY (user_id) REFERENCES users (user_id)
 );
 
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_id INTEGER PRIMARY KEY,
+    primary_wallet_address TEXT,
+    language TEXT DEFAULT 'ar',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (user_id)
+);
+
+CREATE TABLE IF NOT EXISTS invoices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    creator_id INTEGER NOT NULL,
+    payer_user_id INTEGER,
+    wallet_address TEXT NOT NULL,
+    reason TEXT,
+    stars_count INTEGER NOT NULL,
+    usd_value REAL NOT NULL,
+    ton_value REAL NOT NULL,
+    status TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (creator_id) REFERENCES users (user_id),
+    FOREIGN KEY (payer_user_id) REFERENCES users (user_id)
+);
+
+CREATE TABLE IF NOT EXISTS invoice_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_id INTEGER NOT NULL,
+    payer_id INTEGER NOT NULL,
+    stars_paid INTEGER NOT NULL,
+    ton_value REAL NOT NULL,
+    payment_charge_id TEXT,
+    tx_hash TEXT,
+    paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (invoice_id) REFERENCES invoices (id) ON DELETE CASCADE,
+    FOREIGN KEY (payer_id) REFERENCES users (user_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_active_orders_user ON active_orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_completed_transactions_user ON completed_transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_code ON invoices(code);
+CREATE INDEX IF NOT EXISTS idx_invoices_creator ON invoices(creator_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice ON invoice_payments(invoice_id);
 CREATE TRIGGER IF NOT EXISTS trg_user_states_updated
 AFTER UPDATE ON user_states
 FOR EACH ROW

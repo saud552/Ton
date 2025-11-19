@@ -47,6 +47,22 @@ class AppSettings(BaseSettings):
         env="PRICING_PROVIDER_URL",
     )
     admin_user_ids: list[int] = Field(default_factory=list, env="ADMIN_USER_IDS")
+    forced_subscription_enabled: bool = Field(
+        default=False, env="FORCED_SUBSCRIPTION_ENABLED"
+    )
+    forced_subscription_channels: list[str] = Field(
+        default_factory=list, env="FORCED_SUBSCRIPTION_CHANNELS"
+    )
+    maintenance_mode: bool = Field(default=False, env="MAINTENANCE_MODE")
+    maintenance_message: str = Field(
+        default="🛠️ البوت في وضع الصيانة حالياً، يرجى المحاولة لاحقاً.",
+        env="MAINTENANCE_MESSAGE",
+    )
+    broadcast_batch_size: int = Field(default=100, env="BROADCAST_BATCH_SIZE")
+    broadcast_delay_seconds: float = Field(
+        default=0.5, env="BROADCAST_DELAY_SECONDS"
+    )
+    default_user_language: str = Field(default="ar", env="DEFAULT_USER_LANGUAGE")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -75,6 +91,13 @@ class AppSettings(BaseSettings):
     def parse_admin_ids(cls, value):
         if isinstance(value, str):
             return [int(part.strip()) for part in value.split(",") if part.strip()]
+        return value
+
+    @field_validator("forced_subscription_channels", mode="before")
+    @classmethod
+    def parse_channels(cls, value):
+        if isinstance(value, str):
+            return [channel.strip() for channel in value.split(",") if channel.strip()]
         return value
 
 

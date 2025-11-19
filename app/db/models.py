@@ -1,4 +1,4 @@
-"""Data models and enums for the persistence layer."""
+"""Database model dataclasses."""
 
 from __future__ import annotations
 
@@ -18,12 +18,30 @@ class UserStateStage(str, Enum):
     CONFIRMING_WALLET = "confirming_wallet"
 
 
+class InvoiceStatus(str, Enum):
+    """Lifecycle stages for invoices."""
+
+    PENDING = "pending"
+    PAID = "paid"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+
+
 @dataclass(slots=True)
 class User:
     user_id: int
     username: Optional[str]
     full_name: Optional[str]
     created: Optional[datetime] = None
+
+
+@dataclass(slots=True)
+class UserProfile:
+    user_id: int
+    primary_wallet_address: Optional[str]
+    language: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 @dataclass(slots=True)
@@ -64,10 +82,42 @@ class CompletedTransaction:
     completed_at: Optional[datetime]
 
 
+@dataclass(slots=True)
+class Invoice:
+    id: Optional[int]
+    code: str
+    creator_id: int
+    payer_user_id: Optional[int]
+    wallet_address: str
+    reason: Optional[str]
+    stars_count: int
+    usd_value: float
+    ton_value: float
+    status: InvoiceStatus
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+
+@dataclass(slots=True)
+class InvoicePayment:
+    id: Optional[int]
+    invoice_id: int
+    payer_id: int
+    stars_paid: int
+    ton_value: float
+    payment_charge_id: Optional[str]
+    tx_hash: Optional[str]
+    paid_at: Optional[datetime]
+
+
 __all__ = [
     "User",
+    "UserProfile",
     "UserState",
     "UserStateStage",
     "ActiveOrder",
     "CompletedTransaction",
+    "Invoice",
+    "InvoicePayment",
+    "InvoiceStatus",
 ]

@@ -11,6 +11,24 @@ from app.services import BalanceMonitor, MetricsCollector, PricingService, TonGa
 
 
 @dataclass(slots=True)
+class MaintenanceConfig:
+    enabled: bool
+    message: str
+
+
+@dataclass(slots=True)
+class ForcedSubscriptionConfig:
+    enabled: bool
+    channels: list[str]
+
+
+@dataclass(slots=True)
+class BroadcastConfig:
+    batch_size: int
+    delay_seconds: float
+
+
+@dataclass(slots=True)
 class AppContext:
     settings: AppSettings
     db_manager: DatabaseManager
@@ -18,6 +36,9 @@ class AppContext:
     pricing_service: PricingService
     balance_monitor: BalanceMonitor
     metrics: MetricsCollector
+    maintenance: MaintenanceConfig
+    forced_subscription: ForcedSubscriptionConfig
+    broadcast: BroadcastConfig
 
 
 _context: Optional[AppContext] = None
@@ -34,4 +55,11 @@ def get_context() -> AppContext:
     return _context
 
 
-__all__ = ["AppContext", "set_context", "get_context"]
+__all__ = [
+    "AppContext",
+    "MaintenanceConfig",
+    "ForcedSubscriptionConfig",
+    "BroadcastConfig",
+    "set_context",
+    "get_context",
+]

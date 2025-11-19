@@ -1,7 +1,12 @@
 import pytest
 from aiogram.fsm.storage.base import StorageKey
 
-from app.db import DatabaseManager, User, UserRepository
+from app.db import (
+    DatabaseManager,
+    User,
+    UserProfileRepository,
+    UserRepository,
+)
 from app.storage import DatabaseStorage
 
 
@@ -10,7 +15,7 @@ async def test_database_storage_persists_state(tmp_path):
     db_path = tmp_path / "fsm.db"
     manager = DatabaseManager(str(db_path))
     await manager.initialize()
-    storage = DatabaseStorage(manager)
+    storage = DatabaseStorage(manager, default_language="ar")
 
     key = StorageKey(bot_id=1, chat_id=1, user_id=42)
     user_repo = UserRepository(manager)
@@ -20,9 +25,22 @@ async def test_database_storage_persists_state(tmp_path):
     state = await storage.get_state(key)
     assert state == "waiting_for_stars"
 
-    await storage.set_data(key, {"stars_count": 100, "ton_amount": 1.23})
+    await storage.set_data(
+        key,
+        {
+            "stars_count": 100,
+            "ton_amount": 1.23,
+            "preferred_language": "en",
+            "primary_wallet_address": "EQ123wallet",
+        },
+    )
     data = await storage.get_data(key)
     assert data["stars_count"] == 100
     assert pytest.approx(data["ton_amount"], rel=1e-9) == 1.23
 
     await storage.close()
+    profile_repo = UserProfileRepository(manager)
+    profile = await profile_repo.get_profile(42)
+    assert profile is not None
+    assert profile.language == "en"
+    assert profile.primary_wallet_address == "EQ123wallet"

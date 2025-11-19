@@ -7,15 +7,23 @@ from typing import Any, Dict, Optional
 from aiogram.fsm.state import State
 from aiogram.fsm.storage.base import BaseStorage, StateType, StorageKey
 
-from app.db import DatabaseManager, UserState, UserStateRepository, UserStateStage
+from app.db import (
+    DatabaseManager,
+    UserProfileRepository,
+    UserState,
+    UserStateRepository,
+    UserStateStage,
+)
 
 
 class DatabaseStorage(BaseStorage):
     """Persist FSM state and data inside the existing user_states table."""
 
-    def __init__(self, manager: DatabaseManager):
+    def __init__(self, manager: DatabaseManager, default_language: str = "ar"):
         self._manager = manager
         self._repo = UserStateRepository(manager)
+        self._profile_repo = UserProfileRepository(manager)
+        self._default_language = default_language
 
     async def close(self) -> None:
         # Nothing to close explicitly because connections are created per operation
@@ -48,6 +56,7 @@ class DatabaseStorage(BaseStorage):
         record.wallet_address = payload.get("wallet_address")
         record.payment_charge_id = payload.get("payment_charge_id")
         await self._repo.upsert_state(record)
+        await self._sync_profile_from_payload(key.user_id, payload)
 
     async def get_data(self, key: StorageKey) -> Dict[str, Any]:
         record = await self._repo.get_state(key.user_id)
@@ -61,6 +70,9 @@ class DatabaseStorage(BaseStorage):
             return record
         new_record = UserState(user_id=key.user_id)
         await self._repo.upsert_state(new_record)
+        await self._profile_repo.ensure_profile(
+            key.user_id, default_language=self._default_language
+        )
         return new_record
 
     def _normalize_state(self, state: StateType) -> Optional[str]:
@@ -69,6 +81,17 @@ class DatabaseStorage(BaseStorage):
         if isinstance(state, State):
             return state.state
         return str(state)
+
+    async def _sync_profile_from_payload(
+        self, user_id: int, payload: Dict[str, Any]
+    ) -> None:
+        language = payload.get("preferred_language")
+        wallet = payload.get("primary_wallet_address")
+        if language is None and wallet is None:
+            return
+        await self._profile_repo.upsert_partial(
+            user_id, primary_wallet_address=wallet, language=language
+        )
 
 
 __all__ = ["DatabaseStorage"]

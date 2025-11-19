@@ -4,13 +4,20 @@ from .manager import DatabaseManager
 from .models import (
     ActiveOrder,
     CompletedTransaction,
+    Invoice,
+    InvoicePayment,
+    InvoiceStatus,
     User,
+    UserProfile,
     UserState,
     UserStateStage,
 )
 from .repositories import (
     ActiveOrderRepository,
     CompletedTransactionRepository,
+    InvoicePaymentRepository,
+    InvoiceRepository,
+    UserProfileRepository,
     UserRepository,
     UserStateRepository,
 )
@@ -18,7 +25,9 @@ from .repositories import (
 __all__ = [
     "DatabaseManager",
     "User",
+    "UserProfile",
     "UserRepository",
+    "UserProfileRepository",
     "ActiveOrder",
     "ActiveOrderRepository",
     "CompletedTransaction",
@@ -26,4 +35,9 @@ __all__ = [
     "UserState",
     "UserStateRepository",
     "UserStateStage",
+    "Invoice",
+    "InvoicePayment",
+    "InvoiceStatus",
+    "InvoiceRepository",
+    "InvoicePaymentRepository",
 ]
