@@ -1,26 +1,21 @@
-# توكن البوت
-BOT_TOKEN = "2087749078:AAEECUBh7rvAvstGdaI--h7TsCb2CqAJLZY"
+"""Legacy configuration bridge to the new settings system."""
 
-# إعدادات الدفع بالنجوم
-PAYMENT_PROVIDER_TOKEN = ""  # فارغ للنجوم
+from app import get_settings
 
-# محفظة TON
-WALLET_MNEMONIC = "toe advice expire never shoot fatal virtual album health decline deliver scorpion clarify tattoo obey tonight mixed time village final trophy derive famous alone"
-DEPOSIT_ADDRESS = "8134b4e2288644733cc4d64728dbff8a3f3b77b067ae93c05b6103fc0bf814b1"
+settings = get_settings()
 
-# TON API
-API_KEY = "ff3bb5fff207abf0671a5531cd366232644bb6825ebef814f469da13540dbf86"
-RUN_IN_MAINNET = True  # غير إلى True عندما تكون جاهزاً للشبكة الرئيسية
+BOT_TOKEN = settings.bot_token
+PAYMENT_PROVIDER_TOKEN = settings.payment_provider_token
+WALLET_MNEMONIC = settings.wallet_mnemonic
+WALLET_PRIVATE_KEY = settings.wallet_private_key
+DEPOSIT_ADDRESS = settings.deposit_address
 
-if RUN_IN_MAINNET:
-    API_BASE_URL = 'https://toncenter.com/api/v2'
-else:
-    API_BASE_URL = 'https://testnet.toncenter.com/api/v2'
+API_KEY = settings.ton_api_key
+RUN_IN_MAINNET = settings.run_in_mainnet
+API_BASE_URL = settings.api_base_url
 
-# الأسعار
-STAR_PRICE_USD = 0.0119
-TON_PRICE_USD = 2.28  # قم بتحديثه دورياً
-STAR_PRICE_TON = STAR_PRICE_USD / TON_PRICE_USD
+STAR_PRICE_USD = settings.star_price_usd
+TON_PRICE_USD = settings.ton_price_usd
+STAR_PRICE_TON = settings.star_price_ton
 
-# قاعدة البيانات
-DATABASE_FILE = "bot_database.db"
+DATABASE_FILE = settings.database_file
