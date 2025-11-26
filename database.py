@@ -1,175 +1,127 @@
-import sqlite3
+import asyncio
 import logging
-from datetime import datetime
+from typing import List, Optional
+
+from app.db import (
+    ActiveOrder,
+    ActiveOrderRepository,
+    CompletedTransaction,
+    CompletedTransactionRepository,
+    DatabaseManager,
+    User,
+    UserRepository,
+    UserState,
+    UserStateRepository,
+    UserStateStage,
+)
 
 logger = logging.getLogger(__name__)
 
-class Database:
-    def __init__(self, db_file):
-        self.connection = sqlite3.connect(db_file, check_same_thread=False)
-        self.cursor = self.connection.cursor()
-        self.create_tables()
 
-    def create_tables(self):
-        """إنشاء الجداول اللازمة إذا لم تكن موجودة"""
-        try:
-            # جدول المستخدمين
-            self.cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                username TEXT,
-                full_name TEXT,
-                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )''')
-            
-            # جدول الطلبات النشطة
-            self.cursor.execute('''CREATE TABLE IF NOT EXISTS active_orders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                stars_count INTEGER,
-                ton_amount REAL,
-                wallet_address TEXT,
-                payment_charge_id TEXT,
-                status TEXT DEFAULT 'pending',
-                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (user_id)
-            )''')
-            
-            # جدول المعاملات المكتملة
-            self.cursor.execute('''CREATE TABLE IF NOT EXISTS completed_transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                tx_hash TEXT UNIQUE,
-                stars_count INTEGER,
-                ton_amount REAL,
-                wallet_address TEXT,
-                payment_charge_id TEXT,
-                status TEXT DEFAULT 'completed',
-                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (user_id)
-            )''')
-            
-            # جدول حالات المستخدمين
-            self.cursor.execute('''CREATE TABLE IF NOT EXISTS user_states (
-                user_id INTEGER PRIMARY KEY,
-                state TEXT,
-                state_data TEXT,
-                updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )''')
-            
-            self.connection.commit()
-            logger.info("Database tables created successfully")
-        except Exception as e:
-            logger.error(f"Error creating tables: {e}")
+class DatabaseService:
+    """واجهة متزامنة مبنية على طبقة DAO غير المتزامنة."""
 
-    def add_user(self, user_id, username, full_name):
-        """إضافة مستخدم جديد إذا لم يكن موجودًا"""
-        try:
-            self.cursor.execute("INSERT OR IGNORE INTO users (user_id, username, full_name) VALUES (?, ?, ?)",
-                              (user_id, username or "", full_name or ""))
-            self.connection.commit()
-            logger.info(f"User {user_id} added/updated successfully")
-        except Exception as e:
-            logger.error(f"Error adding user {user_id}: {e}")
+    def __init__(self, db_file: str):
+        self._manager = DatabaseManager(db_file)
+        self._run(self._manager.initialize())
 
-    def set_user_state(self, user_id, state, state_data=None):
-        """حفظ حالة المستخدم"""
-        try:
-            import json
-            data_str = json.dumps(state_data) if state_data else None
-            self.cursor.execute("INSERT OR REPLACE INTO user_states (user_id, state, state_data) VALUES (?, ?, ?)", 
-                              (user_id, state, data_str))
-            self.connection.commit()
-        except Exception as e:
-            logger.error(f"Error setting user state for {user_id}: {e}")
+    def _run(self, coroutine):
+        """تنفيذ المهام غير المتزامنة داخل السياق المتزامن الحالي."""
 
-    def get_user_state(self, user_id):
-        """جلب حالة المستخدم"""
-        try:
-            import json
-            self.cursor.execute("SELECT state, state_data FROM user_states WHERE user_id = ?", (user_id,))
-            result = self.cursor.fetchone()
-            if result:
-                state, state_data = result
-                data_obj = json.loads(state_data) if state_data else None
-                return state, data_obj
-            return None, None
-        except Exception as e:
-            logger.error(f"Error getting user state for {user_id}: {e}")
-            return None, None
+        return asyncio.run(coroutine)
 
-    def clear_user_state(self, user_id):
-        """مسح حالة المستخدم"""
-        try:
-            self.cursor.execute("DELETE FROM user_states WHERE user_id = ?", (user_id,))
-            self.connection.commit()
-        except Exception as e:
-            logger.error(f"Error clearing user state for {user_id}: {e}")
+    def add_user(self, user_id: int, username: Optional[str], full_name: Optional[str]) -> None:
+        logger.debug("Adding/updating user %s", user_id)
+        self._run(
+            UserRepository(self._manager).upsert_user(
+                User(user_id=user_id, username=username, full_name=full_name)
+            )
+        )
 
-    def create_order(self, user_id, stars_count, ton_amount, wallet_address, payment_charge_id=None):
-        """إنشاء طلب بيع جديد"""
-        try:
-            # حذف أي طلبات قديمة لنفس المستخدم
-            self.cursor.execute("DELETE FROM active_orders WHERE user_id = ?", (user_id,))
-            
-            # إضافة الطلب الجديد
-            self.cursor.execute('''INSERT INTO active_orders 
-                                (user_id, stars_count, ton_amount, wallet_address, payment_charge_id) 
-                                VALUES (?, ?, ?, ?, ?)''',
-                              (user_id, stars_count, ton_amount, wallet_address, payment_charge_id))
-            self.connection.commit()
-            logger.info(f"Order created for user {user_id}: {stars_count} stars")
-            return True
-        except Exception as e:
-            logger.error(f"Error creating order for user {user_id}: {e}")
+    def set_user_state(
+        self,
+        user_id: int,
+        stage: UserStateStage,
+        *,
+        stars_count: Optional[int] = None,
+        ton_amount: Optional[float] = None,
+        wallet_address: Optional[str] = None,
+        payment_charge_id: Optional[str] = None,
+        payload: Optional[dict] = None,
+    ) -> None:
+        state = UserState(
+            user_id=user_id,
+            stage=stage,
+            stars_count=stars_count,
+            ton_amount=ton_amount,
+            wallet_address=wallet_address,
+            payment_charge_id=payment_charge_id,
+            payload=payload,
+        )
+        self._run(UserStateRepository(self._manager).upsert_state(state))
+
+    def get_user_state(self, user_id: int) -> Optional[UserState]:
+        return self._run(UserStateRepository(self._manager).get_state(user_id))
+
+    def clear_user_state(self, user_id: int) -> None:
+        self.set_user_state(user_id, UserStateStage.IDLE)
+
+    def create_order(
+        self,
+        user_id: int,
+        stars_count: int,
+        ton_amount: float,
+        wallet_address: str,
+        payment_charge_id: Optional[str] = None,
+    ) -> bool:
+        order = ActiveOrder(
+            id=None,
+            user_id=user_id,
+            stars_count=stars_count,
+            ton_amount=ton_amount,
+            wallet_address=wallet_address,
+            payment_charge_id=payment_charge_id,
+            status="pending",
+            created=None,
+        )
+        created = self._run(ActiveOrderRepository(self._manager).create_order(order))
+        logger.info("Order created for user %s (#%s)", user_id, created.id)
+        return True
+
+    def get_order(self, user_id: int) -> Optional[ActiveOrder]:
+        return self._run(ActiveOrderRepository(self._manager).get_by_user(user_id))
+
+    def complete_order(self, user_id: int, tx_hash: str) -> bool:
+        order = self.get_order(user_id)
+        if not order:
             return False
 
-    def get_order(self, user_id):
-        """جلب تفاصيل الطلب النشط للمستخدم"""
-        try:
-            self.cursor.execute('''SELECT stars_count, ton_amount, wallet_address, payment_charge_id 
-                                FROM active_orders WHERE user_id = ?''', (user_id,))
-            return self.cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Error getting order for user {user_id}: {e}")
-            return None
+        transaction = CompletedTransaction(
+            id=None,
+            user_id=user_id,
+            tx_hash=tx_hash,
+            stars_count=order.stars_count,
+            ton_amount=order.ton_amount,
+            wallet_address=order.wallet_address,
+            payment_charge_id=order.payment_charge_id,
+            status="completed",
+            created=None,
+            completed_at=None,
+        )
+        self._run(
+            CompletedTransactionRepository(self._manager).record_transaction(transaction)
+        )
+        self._run(ActiveOrderRepository(self._manager).delete_by_user(user_id))
+        self.clear_user_state(user_id)
+        logger.info("Order completed for user %s, tx %s", user_id, tx_hash)
+        return True
 
-    def complete_order(self, user_id, tx_hash):
-        """إكمال الطلب وإضافته لسجل المعاملات"""
-        try:
-            order = self.get_order(user_id)
-            if order:
-                stars_count, ton_amount, wallet_address, payment_charge_id = order
-                
-                # نقل الطلب لجدول المعاملات المكتملة
-                self.cursor.execute('''INSERT INTO completed_transactions 
-                                    (user_id, tx_hash, stars_count, ton_amount, wallet_address, payment_charge_id) 
-                                    VALUES (?, ?, ?, ?, ?, ?)''',
-                                  (user_id, tx_hash, stars_count, ton_amount, wallet_address, payment_charge_id))
-                
-                # حذف الطلب من الجدول النشط
-                self.cursor.execute("DELETE FROM active_orders WHERE user_id = ?", (user_id,))
-                self.connection.commit()
-                logger.info(f"Order completed for user {user_id}, tx_hash: {tx_hash}")
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"Error completing order for user {user_id}: {e}")
-            return False
+    def get_user_transactions(self, user_id: int, limit: int = 10) -> List[CompletedTransaction]:
+        return self._run(
+            CompletedTransactionRepository(self._manager).get_recent_for_user(user_id, limit)
+        )
 
-    def get_user_transactions(self, user_id, limit=10):
-        """جلب معاملات المستخدم"""
-        try:
-            self.cursor.execute('''SELECT tx_hash, stars_count, ton_amount, wallet_address, created, status 
-                                FROM completed_transactions 
-                                WHERE user_id = ? 
-                                ORDER BY created DESC 
-                                LIMIT ?''', (user_id, limit))
-            return self.cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Error getting transactions for user {user_id}: {e}")
-            return []
 
-# إنشاء كائن قاعدة البيانات
 import config
-db = Database(config.DATABASE_FILE)
+
+db = DatabaseService(config.DATABASE_FILE)
